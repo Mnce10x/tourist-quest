@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Election Forecast Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --color-a: #2563eb;
+      --color-b: #dc2626;
+      --color-c: #f59e0b;
+      --color-undecided: #9ca3af;
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface2: #334155;
+      --text: #f1f5f9;
+      --text-muted: #94a3b8;
+      --border: #475569;
+      --green: #22c55e;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    header h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+
+    header h1 span { color: var(--color-a); }
+
+    .upload-area {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .upload-btn {
+      background: var(--color-a);
+      color: white;
+      border: none;
+      padding: 0.5rem 1.25rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+
+    .upload-btn:hover { background: #1d4ed8; }
+
+    .file-name { color: var(--text-muted); font-size: 0.85rem; }
+
+    .load-sample {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+
+    .load-sample:hover { background: var(--border); }
+
+    #file-input { display: none; }
+
+    main { padding: 1.5rem 2rem; max-width: 1400px; margin: 0 auto; }
+
+    /* Landing state */
+    .landing {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 60vh;
+      text-align: center;
+    }
+
+    .landing h2 { font-size: 1.8rem; margin-bottom: 0.5rem; }
+    .landing p { color: var(--text-muted); margin-bottom: 1.5rem; max-width: 500px; line-height: 1.6; }
+
+    .landing .format-info {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+      text-align: left;
+      font-size: 0.85rem;
+      max-width: 480px;
+      width: 100%;
+    }
+
+    .landing .format-info h3 { margin-bottom: 0.5rem; font-size: 0.95rem; }
+    .landing .format-info code { background: var(--surface2); padding: 2px 5px; border-radius: 3px; font-size: 0.8rem; }
+
+    /* Dashboard */
+    .dashboard { display: none; }
+
+    .summary-row {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .summary-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      text-align: center;
+    }
+
+    .summary-card .label {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.4rem;
+    }
+
+    .summary-card .value {
+      font-size: 2rem;
+      font-weight: 700;
+    }
+
+    .summary-card .sub {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+
+    .win-prob .value.a { color: var(--color-a); }
+    .win-prob .value.b { color: var(--color-b); }
+    .win-prob .value.c { color: var(--color-c); }
+
+    .chart-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+    }
+
+    .chart-card h3 {
+      font-size: 1rem;
+      margin-bottom: 1rem;
+      color: var(--text);
+    }
+
+    .chart-card canvas { width: 100% !important; }
+
+    .chart-card.full-width { grid-column: 1 / -1; }
+
+    /* Probability bar */
+    .prob-bar-container { margin-bottom: 1.5rem; }
+
+    .prob-bar-container h3 {
+      font-size: 1rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .prob-bar {
+      display: flex;
+      height: 48px;
+      border-radius: 8px;
+      overflow: hidden;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    .prob-bar div {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: width 0.6s ease;
+      min-width: 40px;
+    }
+
+    .prob-bar .seg-a { background: var(--color-a); }
+    .prob-bar .seg-b { background: var(--color-b); }
+    .prob-bar .seg-c { background: var(--color-c); color: #000; }
+
+    /* Region table */
+    .region-table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      margin-bottom: 1.5rem;
+      overflow-x: auto;
+    }
+
+    .region-table-card h3 { font-size: 1rem; margin-bottom: 1rem; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+
+    th, td {
+      padding: 0.6rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    td.lead { font-weight: 600; }
+    td.lead-a { color: var(--color-a); }
+    td.lead-b { color: var(--color-b); }
+
+    /* Filter bar */
+    .filter-bar {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .filter-bar label { color: var(--text-muted); font-size: 0.85rem; }
+
+    .filter-bar select {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 0.4rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .chart-grid { grid-template-columns: 1fr; }
+      header { padding: 1rem; }
+      main { padding: 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><span>&#9656;</span> Election Forecast</h1>
+    <div class="upload-area">
+      <button class="upload-btn" onclick="document.getElementById('file-input').click()">Upload Excel File</button>
+      <input type="file" id="file-input" accept=".xlsx,.xls,.csv" />
+      <span class="file-name" id="file-name"></span>
+      <button class="load-sample" id="load-sample-btn">Load Sample Data</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="landing" id="landing">
+      <h2>Upload Election Data</h2>
+      <p>Upload an Excel file (.xlsx) with polling data to generate a live election forecast with trend analysis and win probabilities.</p>
+      <div class="format-info">
+        <h3>Expected Excel Format</h3>
+        <p style="margin-bottom:0.5rem;color:var(--text-muted)"><strong>Sheet 1 — "Polling Data"</strong></p>
+        <p style="color:var(--text-muted);line-height:1.5">
+          Columns: <code>Date</code>, <code>Pollster</code>, <code>CandidateA</code>, <code>CandidateB</code>, <code>CandidateC</code>, <code>Undecided</code>, <code>SampleSize</code>, <code>Region</code>
+        </p>
+        <p style="margin-top:0.75rem;margin-bottom:0.5rem;color:var(--text-muted)"><strong>Sheet 2 — "Historical Results" (optional)</strong></p>
+        <p style="color:var(--text-muted);line-height:1.5">
+          Columns: <code>Year</code>, <code>PartyA</code>, <code>PartyB</code>, <code>Other</code>, <code>Turnout</code>
+        </p>
+      </div>
+    </div>
+
+    <div class="dashboard" id="dashboard">
+      <div class="filter-bar">
+        <label>Region:</label>
+        <select id="region-filter"><option value="all">All Regions</option></select>
+        <label>Pollster:</label>
+        <select id="pollster-filter"><option value="all">All Pollsters</option></select>
+      </div>
+
+      <div class="summary-row" id="summary-row"></div>
+
+      <div class="prob-bar-container">
+        <h3>Win Probability</h3>
+        <div class="prob-bar" id="prob-bar"></div>
+      </div>
+
+      <div class="chart-grid">
+        <div class="chart-card full-width">
+          <h3>Polling Trend Over Time</h3>
+          <canvas id="trendChart"></canvas>
+        </div>
+        <div class="chart-card">
+          <h3>Latest Polling Average</h3>
+          <canvas id="avgChart"></canvas>
+        </div>
+        <div class="chart-card">
+          <h3>Forecast Distribution (Monte Carlo)</h3>
+          <canvas id="distChart"></canvas>
+        </div>
+      </div>
+
+      <div class="region-table-card">
+        <h3>Regional Breakdown</h3>
+        <table id="region-table">
+          <thead>
+            <tr>
+              <th>Region</th>
+              <th>Candidate A</th>
+              <th>Candidate B</th>
+              <th>Candidate C</th>
+              <th>Margin</th>
+              <th>Polls</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="chart-grid">
+        <div class="chart-card">
+          <h3>Historical Election Results</h3>
+          <canvas id="histChart"></canvas>
+        </div>
+        <div class="chart-card">
+          <h3>Sample Size by Pollster</h3>
+          <canvas id="pollsterChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    // ── State ──
+    let rawPolling = [];
+    let historicalData = [];
+    let regionDemographics = [];
+    let charts = {};
+
+    // ── File handling ──
+    document.getElementById("file-input").addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      document.getElementById("file-name").textContent = file.name;
+      const reader = new FileReader();
+      reader.onload = (ev) => parseExcel(ev.target.result);
+      reader.readAsArrayBuffer(file);
+    });
+
+    document.getElementById("load-sample-btn").addEventListener("click", async () => {
+      try {
+        const resp = await fetch("election_data.xlsx");
+        const buf = await resp.arrayBuffer();
+        document.getElementById("file-name").textContent = "election_data.xlsx (sample)";
+        parseExcel(buf);
+      } catch (err) {
+        alert("Could not load sample file. Make sure election_data.xlsx is in the same directory.");
+      }
+    });
+
+    function parseExcel(data) {
+      const wb = XLSX.read(data, { type: "array", cellDates: true });
+
+      // Sheet 1: Polling data
+      const pollSheet = wb.Sheets[wb.SheetNames[0]];
+      rawPolling = XLSX.utils.sheet_to_json(pollSheet).map((r) => ({
+        date: new Date(r.Date),
+        pollster: r.Pollster || "Unknown",
+        a: +r.CandidateA || 0,
+        b: +r.CandidateB || 0,
+        c: +r.CandidateC || 0,
+        undecided: +r.Undecided || 0,
+        sampleSize: +r.SampleSize || 500,
+        region: r.Region || "National",
+      }));
+      rawPolling.sort((x, y) => x.date - y.date);
+
+      // Sheet 2: Historical results (optional)
+      if (wb.SheetNames.length > 1) {
+        const histSheet = wb.Sheets[wb.SheetNames[1]];
+        historicalData = XLSX.utils.sheet_to_json(histSheet);
+      }
+
+      // Sheet 3: Regional demographics (optional)
+      if (wb.SheetNames.length > 2) {
+        const regSheet = wb.Sheets[wb.SheetNames[2]];
+        regionDemographics = XLSX.utils.sheet_to_json(regSheet);
+      }
+
+      populateFilters();
+      renderDashboard();
+    }
+
+    function populateFilters() {
+      const regions = [...new Set(rawPolling.map((r) => r.region))];
+      const pollsters = [...new Set(rawPolling.map((r) => r.pollster))];
+
+      const rf = document.getElementById("region-filter");
+      rf.innerHTML = '<option value="all">All Regions</option>';
+      regions.forEach((r) => { const o = document.createElement("option"); o.value = r; o.textContent = r; rf.appendChild(o); });
+
+      const pf = document.getElementById("pollster-filter");
+      pf.innerHTML = '<option value="all">All Pollsters</option>';
+      pollsters.forEach((p) => { const o = document.createElement("option"); o.value = p; o.textContent = p; pf.appendChild(o); });
+
+      rf.onchange = renderDashboard;
+      pf.onchange = renderDashboard;
+    }
+
+    // ── Forecast engine ──
+    function weightedAverage(polls) {
+      // Recency-weighted + sample-size-weighted average
+      if (!polls.length) return { a: 0, b: 0, c: 0 };
+      const now = polls[polls.length - 1].date.getTime();
+      const DECAY = 7 * 86400000; // 7-day half-life
+
+      let wA = 0, wB = 0, wC = 0, totalW = 0;
+      polls.forEach((p) => {
+        const age = (now - p.date.getTime()) / DECAY;
+        const recencyW = Math.exp(-0.693 * age); // ln(2) decay
+        const sizeW = Math.sqrt(p.sampleSize / 1000);
+        const w = recencyW * sizeW;
+        wA += p.a * w;
+        wB += p.b * w;
+        wC += p.c * w;
+        totalW += w;
+      });
+      return { a: wA / totalW, b: wB / totalW, c: wC / totalW };
+    }
+
+    function monteCarloSim(avg, polls, nSim = 10000) {
+      // Estimate polling error from variance in recent polls
+      const recent = polls.slice(-10);
+      const stdA = stdDev(recent.map((p) => p.a));
+      const stdB = stdDev(recent.map((p) => p.b));
+
+      // Add systematic polling error (~2.5 points historical)
+      const sysError = 2.5;
+      const totalStdA = Math.sqrt(stdA * stdA + sysError * sysError);
+      const totalStdB = Math.sqrt(stdB * stdB + sysError * sysError);
+
+      let winsA = 0, winsB = 0, winsC = 0;
+      const resultsA = [], resultsB = [];
+
+      for (let i = 0; i < nSim; i++) {
+        const simA = avg.a + randn() * totalStdA;
+        const simB = avg.b + randn() * totalStdB;
+        const simC = Math.max(0, 100 - simA - simB);
+        resultsA.push(simA);
+        resultsB.push(simB);
+        if (simA > simB && simA > simC) winsA++;
+        else if (simB > simA && simB > simC) winsB++;
+        else winsC++;
+      }
+
+      return {
+        probA: (winsA / nSim) * 100,
+        probB: (winsB / nSim) * 100,
+        probC: (winsC / nSim) * 100,
+        resultsA,
+        resultsB,
+      };
+    }
+
+    function stdDev(arr) {
+      if (arr.length < 2) return 2;
+      const mean = arr.reduce((s, v) => s + v, 0) / arr.length;
+      const sq = arr.reduce((s, v) => s + (v - mean) ** 2, 0) / (arr.length - 1);
+      return Math.sqrt(sq);
+    }
+
+    function randn() {
+      let u = 0, v = 0;
+      while (u === 0) u = Math.random();
+      while (v === 0) v = Math.random();
+      return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    }
+
+    // ── Render ──
+    function renderDashboard() {
+      document.getElementById("landing").style.display = "none";
+      document.getElementById("dashboard").style.display = "block";
+
+      const regionFilter = document.getElementById("region-filter").value;
+      const pollsterFilter = document.getElementById("pollster-filter").value;
+
+      let filtered = rawPolling;
+      if (regionFilter !== "all") filtered = filtered.filter((p) => p.region === regionFilter);
+      if (pollsterFilter !== "all") filtered = filtered.filter((p) => p.pollster === pollsterFilter);
+
+      if (!filtered.length) { filtered = rawPolling; }
+
+      const avg = weightedAverage(filtered);
+      const sim = monteCarloSim(avg, filtered);
+
+      renderSummary(avg, sim, filtered);
+      renderProbBar(sim);
+      renderTrendChart(filtered);
+      renderAvgChart(avg);
+      renderDistChart(sim);
+      renderRegionTable();
+      renderHistoricalChart();
+      renderPollsterChart();
+    }
+
+    function renderSummary(avg, sim, polls) {
+      const margin = avg.a - avg.b;
+      const marginStr = (margin > 0 ? "A +" : "B +") + Math.abs(margin).toFixed(1);
+      const leader = sim.probA > sim.probB ? "A" : "B";
+      const leaderProb = Math.max(sim.probA, sim.probB);
+
+      document.getElementById("summary-row").innerHTML = `
+        <div class="summary-card win-prob">
+          <div class="label">Candidate A</div>
+          <div class="value a">${avg.a.toFixed(1)}%</div>
+          <div class="sub">Win prob: ${sim.probA.toFixed(1)}%</div>
+        </div>
+        <div class="summary-card win-prob">
+          <div class="label">Candidate B</div>
+          <div class="value b">${avg.b.toFixed(1)}%</div>
+          <div class="sub">Win prob: ${sim.probB.toFixed(1)}%</div>
+        </div>
+        <div class="summary-card win-prob">
+          <div class="label">Candidate C</div>
+          <div class="value c">${avg.c.toFixed(1)}%</div>
+          <div class="sub">Win prob: ${sim.probC.toFixed(1)}%</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Margin</div>
+          <div class="value" style="color:${margin > 0 ? 'var(--color-a)' : 'var(--color-b)'}">${marginStr}</div>
+          <div class="sub">${polls.length} polls analyzed</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">Forecast</div>
+          <div class="value" style="color:${leader === 'A' ? 'var(--color-a)' : 'var(--color-b)'}">
+            ${leader === 'A' ? 'A' : 'B'} Wins
+          </div>
+          <div class="sub">${leaderProb.toFixed(1)}% probability</div>
+        </div>
+      `;
+    }
+
+    function renderProbBar(sim) {
+      document.getElementById("prob-bar").innerHTML = `
+        <div class="seg-a" style="width:${sim.probA}%">${sim.probA.toFixed(1)}%</div>
+        <div class="seg-b" style="width:${sim.probB}%">${sim.probB.toFixed(1)}%</div>
+        <div class="seg-c" style="width:${sim.probC}%">${sim.probC > 3 ? sim.probC.toFixed(1) + '%' : ''}</div>
+      `;
+    }
+
+    function renderTrendChart(polls) {
+      const ctx = document.getElementById("trendChart").getContext("2d");
+      if (charts.trend) charts.trend.destroy();
+
+      // Group by date for smoothing
+      const dateMap = {};
+      polls.forEach((p) => {
+        const key = p.date.toISOString().slice(0, 10);
+        if (!dateMap[key]) dateMap[key] = { a: [], b: [], c: [] };
+        dateMap[key].a.push(p.a);
+        dateMap[key].b.push(p.b);
+        dateMap[key].c.push(p.c);
+      });
+
+      const dates = Object.keys(dateMap).sort();
+      const avgA = dates.map((d) => mean(dateMap[d].a));
+      const avgB = dates.map((d) => mean(dateMap[d].b));
+      const avgC = dates.map((d) => mean(dateMap[d].c));
+
+      charts.trend = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: dates,
+          datasets: [
+            { label: "Candidate A", data: avgA, borderColor: "#2563eb", backgroundColor: "rgba(37,99,235,0.1)", fill: true, tension: 0.3, pointRadius: 4 },
+            { label: "Candidate B", data: avgB, borderColor: "#dc2626", backgroundColor: "rgba(220,38,38,0.1)", fill: true, tension: 0.3, pointRadius: 4 },
+            { label: "Candidate C", data: avgC, borderColor: "#f59e0b", backgroundColor: "rgba(245,158,11,0.1)", fill: true, tension: 0.3, pointRadius: 4 },
+          ],
+        },
+        options: chartOptions("Polling %"),
+      });
+    }
+
+    function renderAvgChart(avg) {
+      const ctx = document.getElementById("avgChart").getContext("2d");
+      if (charts.avg) charts.avg.destroy();
+
+      charts.avg = new Chart(ctx, {
+        type: "doughnut",
+        data: {
+          labels: ["Candidate A", "Candidate B", "Candidate C"],
+          datasets: [{
+            data: [avg.a, avg.b, avg.c],
+            backgroundColor: ["#2563eb", "#dc2626", "#f59e0b"],
+            borderColor: "#1e293b",
+            borderWidth: 3,
+          }],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { labels: { color: "#f1f5f9" } },
+          },
+        },
+      });
+    }
+
+    function renderDistChart(sim) {
+      const ctx = document.getElementById("distChart").getContext("2d");
+      if (charts.dist) charts.dist.destroy();
+
+      // Build histogram
+      const binsA = buildHistogram(sim.resultsA, 30, 60, 30);
+      const binsB = buildHistogram(sim.resultsB, 30, 60, 30);
+
+      charts.dist = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: binsA.labels,
+          datasets: [
+            { label: "Candidate A", data: binsA.counts, backgroundColor: "rgba(37,99,235,0.6)", barPercentage: 1, categoryPercentage: 1 },
+            { label: "Candidate B", data: binsB.counts, backgroundColor: "rgba(220,38,38,0.6)", barPercentage: 1, categoryPercentage: 1 },
+          ],
+        },
+        options: {
+          responsive: true,
+          scales: {
+            x: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(71,85,105,0.3)" }, title: { display: true, text: "Vote Share %", color: "#94a3b8" } },
+            y: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(71,85,105,0.3)" }, title: { display: true, text: "Simulations", color: "#94a3b8" } },
+          },
+          plugins: { legend: { labels: { color: "#f1f5f9" } } },
+        },
+      });
+    }
+
+    function renderRegionTable() {
+      const regions = [...new Set(rawPolling.map((p) => p.region))];
+      const tbody = document.querySelector("#region-table tbody");
+      tbody.innerHTML = "";
+
+      regions.forEach((region) => {
+        const rPolls = rawPolling.filter((p) => p.region === region);
+        const avg = weightedAverage(rPolls);
+        const margin = avg.a - avg.b;
+        const marginStr = (margin > 0 ? "A +" : "B +") + Math.abs(margin).toFixed(1);
+        const leadClass = margin > 0 ? "lead-a" : "lead-b";
+
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${region}</td>
+          <td style="color:var(--color-a)">${avg.a.toFixed(1)}%</td>
+          <td style="color:var(--color-b)">${avg.b.toFixed(1)}%</td>
+          <td style="color:var(--color-c)">${avg.c.toFixed(1)}%</td>
+          <td class="lead ${leadClass}">${marginStr}</td>
+          <td>${rPolls.length}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderHistoricalChart() {
+      if (!historicalData.length) return;
+      const ctx = document.getElementById("histChart").getContext("2d");
+      if (charts.hist) charts.hist.destroy();
+
+      charts.hist = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: historicalData.map((h) => h.Year),
+          datasets: [
+            { label: "Party A", data: historicalData.map((h) => h.PartyA), backgroundColor: "#2563eb" },
+            { label: "Party B", data: historicalData.map((h) => h.PartyB), backgroundColor: "#dc2626" },
+            { label: "Other", data: historicalData.map((h) => h.Other), backgroundColor: "#f59e0b" },
+          ],
+        },
+        options: chartOptions("Vote Share %"),
+      });
+    }
+
+    function renderPollsterChart() {
+      const pollsters = [...new Set(rawPolling.map((p) => p.pollster))];
+      const totals = pollsters.map((ps) =>
+        rawPolling.filter((p) => p.pollster === ps).reduce((s, p) => s + p.sampleSize, 0)
+      );
+
+      const ctx = document.getElementById("pollsterChart").getContext("2d");
+      if (charts.pollster) charts.pollster.destroy();
+
+      charts.pollster = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: pollsters,
+          datasets: [{
+            label: "Total Sample Size",
+            data: totals,
+            backgroundColor: ["#2563eb", "#22c55e", "#f59e0b", "#dc2626", "#8b5cf6"],
+          }],
+        },
+        options: {
+          indexAxis: "y",
+          responsive: true,
+          scales: {
+            x: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(71,85,105,0.3)" } },
+            y: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(71,85,105,0.3)" } },
+          },
+          plugins: { legend: { display: false } },
+        },
+      });
+    }
+
+    // ── Helpers ──
+    function mean(arr) { return arr.reduce((s, v) => s + v, 0) / arr.length; }
+
+    function buildHistogram(data, min, max, nBins) {
+      const binSize = (max - min) / nBins;
+      const counts = new Array(nBins).fill(0);
+      const labels = [];
+      for (let i = 0; i < nBins; i++) {
+        labels.push((min + i * binSize).toFixed(1));
+      }
+      data.forEach((v) => {
+        const idx = Math.min(Math.floor((v - min) / binSize), nBins - 1);
+        if (idx >= 0 && idx < nBins) counts[idx]++;
+      });
+      return { labels, counts };
+    }
+
+    function chartOptions(yTitle) {
+      return {
+        responsive: true,
+        interaction: { mode: "index", intersect: false },
+        scales: {
+          x: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(71,85,105,0.3)" } },
+          y: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(71,85,105,0.3)" }, title: { display: true, text: yTitle, color: "#94a3b8" } },
+        },
+        plugins: { legend: { labels: { color: "#f1f5f9" } } },
+      };
+    }
+  </script>
+</body>
+</html>
