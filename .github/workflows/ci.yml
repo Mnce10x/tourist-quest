@@ -1,0 +1,27 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build stack
+        run: docker compose up --build -d
+      - name: Migrate
+        run: docker compose exec -T api alembic upgrade head
+      - name: Seed demo data
+        run: docker compose exec -T api python -m app.seed_demo
+      - name: Ingest sample
+        run: docker compose exec -T worker python -m worker.run_first_ingest
+      - name: API smoke checks
+        run: |
+          curl -fsS http://localhost:8000/api/health
+          curl -fsS -H 'x-role: admin' http://localhost:8000/api/overview
+          curl -fsS -H 'x-role: admin' http://localhost:8000/api/data-quality
+      - name: Teardown
+        if: always()
+        run: docker compose down -v
