@@ -1,11 +1,11 @@
 {
-  "name": "Tourist Quest 2D",
-  "short_name": "TQ2D",
+  "name": "Canna vs Zombies",
+  "short_name": "CannaZ",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
-  "background_color": "#0ea5e9",
-  "theme_color": "#0ea5e9",
+  "background_color": "#111111",
+  "theme_color": "#1b5e20",
   "icons": [
     {
       "src": "icons/icon-192.png",
